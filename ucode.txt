@@ -7,60 +7,68 @@
 40:
 80:
 
-01: m_load_opcode     // allow M_DATA --> M_OPCODE transfer
-02: m_reset_clear     // try clearing RESET, actual result will be visible on Rising Edge
-04:
+01: m_reset_clear     // try clearing RESET, actual result will be visible on Rising Edge
+02: m_load_uop_low    // M_UPC <-- decode/interrupt, not uPC++
+04: m_load_opcode     // allow M_DATA --> M_OPCODE transfer
 08: m_PC_to_PC        // M_PC <-- S_PC
-10: m_load_uop_low    // M_UPC <-- decode/interrupt, not uPC++
-20: m_VEC_RESET_to_PC // M_PC <-- (reset vector - 1), so 0x3ff
+10: m_VEC_RESET_to_PC // M_PC <-- (reset vector - 1), so 0x3ff
+20:
 40:
 80:
 
-b01: m_flag_set_mem
-b00: m_mux_in_flag_mem_one
+b00: m_mux_in_flag_mem_mem // no change
+b01: m_mux_in_flag_mem_one
 b02: m_mux_in_flag_mem_emu
-b04: m_mux_in_flag_mem_sec
-b06: m_mux_in_flag_mem_not
+b03: m_mux_in_flag_mem_sec // SEC opcode
+b04: m_mux_in_flag_mem_not
+b05:
+b06:
+b07:
 
-b08: m_flag_set_carry
-b00: m_mux_in_flag_carry_nul
+b00: m_mux_in_flag_carry_carry
+b08: m_mux_in_flag_carry_zero
 b10: m_mux_in_flag_carry_one
-b20: m_mux_in_flag_carry_bus
-b30: m_mux_in_flag_carry_emu
-b40: m_mux_in_flag_carry_alu
-b50: m_mux_in_flag_carry_unu
-b60: m_mux_in_flag_carry_unu
-b70: m_mux_in_flag_carry_unu
+b18: m_mux_in_flag_carry_bus
+b20: m_mux_in_flag_carry_emu
+b28: m_mux_in_flag_carry_alu
+b30:
+b38:
 
-b80: m_flag_set_emu
-c00: m_mux_in_flag_emu_one
-c01: m_mux_in_flag_emu_carry
+b00: m_mux_in_flag_emu_emu
+b40: m_mux_in_flag_emu_one
+b80: m_mux_in_flag_emu_carry
+bc0:
 
-c02: m_flag_set_zero
-c00: m_mux_in_flag_zero_zero
-c04: m_mux_in_flag_zero_bus
-c08: m_mux_in_flag_zero_alu
-c0c: m_mux_in_flag_zero_unu
+c00: m_mux_in_flag_zero_same // unchanged
+c01: m_mux_in_flag_zero_zero // zero value
+c02: m_mux_in_flag_zero_bus
+c03: m_mux_in_flag_zero_alu
 
-init$0L:
+init$0L: 02+04
     // Read PC+1
     // S_ADDR <-- M_PC + 1
     s_PC_to_ADDR
     s_pc_increment
-init$0H:
+init$0H: 04+02+08
     // Decode opcode just read
     m_load_opcode
     m_load_uop_low
     // Propage increased PC back
     m_PC_to_PC
 
-interrupt_reset$1L:
+interrupt_reset$1L: 00
     // Triggered from m_load_uop_low after activated RE of RESET
-interrupt_reset$1H:
+interrupt_reset$1H: a11 b49 c01
     // TODO: proper reset, but right now we don't have anything :))))
     // Load reset vector into PC
     m_VEC_RESET_to_PC
     m_reset_clear
+
+    // Flags
+    m_mux_in_flag_mem_one
+    m_mux_in_flag_emu_one
+    m_mux_in_flag_zero_zero
+    m_mux_in_flag_carry_zero
 
     // Continue normal execution from reset vector
     // If reset won't clear, we'll notice this during decode stage and roll back to this handler..
@@ -76,14 +84,14 @@ lock_unknown_opcode$2H:
 op_18_CLC_clear_carry_flag$3L:
     // Set carry to false
     // What would make more sense? Set at low or set at high?
-op_18_CLC_clear_carry_flag$3H:
-    m_flag_clear_carry
+op_18_CLC_clear_carry_flag$3H: b08
+    m_mux_in_flag_carry_zero
     goto init$0
 
 op_38_SEC_set_carry_flag$4L:
     // nop during low cycle
-op_38_SEC_set_carry_flag$4H:
-    m_flag_set_carry
+op_38_SEC_set_carry_flag$4H: b10
+    m_mux_in_flag_carry_one
     goto init$0
 
 op_FB_XCE_swap_carry_and_emu_flags$5L:
@@ -97,4 +105,10 @@ op_FB_XCE_swap_carry_and_emu_flags$5L:
     //     mask8(A), mask8(X), mask8(Y)
     // - Swap C and E
     // Note that this opcode does not restore high bits of A, only captures them!
-op_FB_XCE_swap_carry_and_emu_flags$5H:
+op_FB_XCE_swap_carry_and_emu_flags$5H: ba3
+    m_mux_in_flag_carry_emu
+    m_mux_in_flag_emu_carry
+    m_mux_in_flag_mem_sec
+
+op_A5_LDA_load_a_zero_page$6L:
+op_A5_LDA_load_a_zero_page$6H:
