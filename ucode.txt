@@ -1,0 +1,100 @@
+01: s_write_mode   // !(R/!W) output
+02: s_PC_to_ADDR   // out s_PC to ADDR bus
+04: s_pc_increment // S_PC = M_PC + s_pc_increment
+08:
+10:
+20:
+40:
+80:
+
+01: m_load_opcode     // allow M_DATA --> M_OPCODE transfer
+02: m_reset_clear     // try clearing RESET, actual result will be visible on Rising Edge
+04:
+08: m_PC_to_PC        // M_PC <-- S_PC
+10: m_load_uop_low    // M_UPC <-- decode/interrupt, not uPC++
+20: m_VEC_RESET_to_PC // M_PC <-- (reset vector - 1), so 0x3ff
+40:
+80:
+
+b01: m_flag_set_mem
+b00: m_mux_in_flag_mem_one
+b02: m_mux_in_flag_mem_emu
+b04: m_mux_in_flag_mem_sec
+b06: m_mux_in_flag_mem_not
+
+b08: m_flag_set_carry
+b00: m_mux_in_flag_carry_nul
+b10: m_mux_in_flag_carry_one
+b20: m_mux_in_flag_carry_bus
+b30: m_mux_in_flag_carry_emu
+b40: m_mux_in_flag_carry_alu
+b50: m_mux_in_flag_carry_unu
+b60: m_mux_in_flag_carry_unu
+b70: m_mux_in_flag_carry_unu
+
+b80: m_flag_set_emu
+c00: m_mux_in_flag_emu_one
+c01: m_mux_in_flag_emu_carry
+
+c02: m_flag_set_zero
+c00: m_mux_in_flag_zero_zero
+c04: m_mux_in_flag_zero_bus
+c08: m_mux_in_flag_zero_alu
+c0c: m_mux_in_flag_zero_unu
+
+init$0L:
+    // Read PC+1
+    // S_ADDR <-- M_PC + 1
+    s_PC_to_ADDR
+    s_pc_increment
+init$0H:
+    // Decode opcode just read
+    m_load_opcode
+    m_load_uop_low
+    // Propage increased PC back
+    m_PC_to_PC
+
+interrupt_reset$1L:
+    // Triggered from m_load_uop_low after activated RE of RESET
+interrupt_reset$1H:
+    // TODO: proper reset, but right now we don't have anything :))))
+    // Load reset vector into PC
+    m_VEC_RESET_to_PC
+    m_reset_clear
+
+    // Continue normal execution from reset vector
+    // If reset won't clear, we'll notice this during decode stage and roll back to this handler..
+    goto init$0
+
+lock_unknown_opcode$2L:
+    // default code for unknown opcodes
+    // lock fetch forever and just keep sampling data
+    // yet never move it into opcode register, so we can at least debug :)))
+lock_unknown_opcode$2H:
+    goto lock_unknown_opcode$2
+
+op_18_CLC_clear_carry_flag$3L:
+    // Set carry to false
+    // What would make more sense? Set at low or set at high?
+op_18_CLC_clear_carry_flag$3H:
+    m_flag_clear_carry
+    goto init$0
+
+op_38_SEC_set_carry_flag$4L:
+    // nop during low cycle
+op_38_SEC_set_carry_flag$4H:
+    m_flag_set_carry
+    goto init$0
+
+op_FB_XCE_swap_carry_and_emu_flags$5L:
+    // A way to change emulation flag
+    // Basically E flag changes how SP is incremented/decremented during push and pop
+    // You'd ask why? Well, I don't know. It is cleared right away :DDDD
+    // But anyways:
+    // - if C and !E and !M then B = A_high
+    // - if C and !E then
+    //     M = true, X = true
+    //     mask8(A), mask8(X), mask8(Y)
+    // - Swap C and E
+    // Note that this opcode does not restore high bits of A, only captures them!
+op_FB_XCE_swap_carry_and_emu_flags$5H:
